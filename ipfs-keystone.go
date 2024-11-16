@@ -1,4 +1,4 @@
-package ipfsKeystone
+package ipfs-keystone-test
 
 // #cgo LDFLAGS: -L./ -lipfs_keystone -lstdc++
 // #cgo CFLAGS: -I./include -I./include/host -I./include/edge
