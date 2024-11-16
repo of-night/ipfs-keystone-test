@@ -5,7 +5,7 @@ package ipfsKeystoneTest
 // #include "ipfs_keystone.h"
 import "C"
 
-func ipfs_keystone_test(isAES int) {
+func Ipfs_keystone_test(isAES int) {
 
     // Convert Go int to C int
     cIsAES := C.int(isAES)
