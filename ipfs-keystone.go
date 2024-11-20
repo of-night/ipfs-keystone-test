@@ -5,13 +5,36 @@ package ipfsKeystoneTest
 // #include "ipfs_keystone.h"
 import "C"
 
-func Ipfs_keystone_test(isAES int) {
+import (
+    "fmt"
+    "unsafe"
+    "runtime"
+    "sync"
+)
+
+func Ipfs_keystone_test(isAES int, FileName string) {
+
+    // 打印FileName
+    fmt.Println("Processing file:", FileName)
 
     // Convert Go int to C int
     cIsAES := C.int(isAES)
+    // Convert Go string to C char
+    cFileName := C.CString(FileName)
 
-    // Call the C function
-    C.ipfs_keystone(cIsAES)
+    defer C.free(unsafe.Pointer(cFileName))
+
+	// 使用goroutine启动C函数
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+        defer runtime.KeepAlive(nil) // Ensure the goroutine does not return before the C function completes
+
+		C.ipfs_keystone(cIsAES, cFileName)
+	}()
+
+	// 等待所有goroutines完成
+	wg.Wait()
 
 }
-
