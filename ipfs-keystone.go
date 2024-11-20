@@ -2,6 +2,7 @@ package ipfsKeystoneTest
 
 // #cgo LDFLAGS: -L/usr/local/ipfs-keystone -lipfs_keystone -lstdc++
 // #cgo CFLAGS: -I/usr/local/ipfs-keystone/include -I/usr/local/ipfs-keystone/include/host -I/usr/local/ipfs-keystone/include/edge
+// #include <stdlib.h>
 // #include "ipfs_keystone.h"
 import "C"
 
