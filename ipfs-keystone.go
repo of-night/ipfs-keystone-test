@@ -7,35 +7,102 @@ package ipfsKeystoneTest
 import "C"
 
 import (
-    "fmt"
-    "unsafe"
-    "runtime"
-    "sync"
+	"fmt"
+	"io"
+	"unsafe"
+	"sync"
 )
 
-func Ipfs_keystone_test(isAES int, FileName string) {
+// TEEFileReader 结构体封装了环形缓冲区的相关操作
+type TEEFileReader struct {
+	rb     *C.RingBuffer          // 指向C语言中的RingBuffer结构
+	readCh chan struct{}          // 通道用于通知读取完成
+	wg     sync.WaitGroup         // 等待组用于等待后台goroutine完成
+	mu     sync.Mutex             // 互斥锁，保护共享资源
+	closed bool                 // 标记是否已经关闭
+}
 
-    // 打印FileName
-    fmt.Println("Processing file:", FileName)
+// NewTEEFileReader 创建一个新的TEEFileReader实例
+func NewTEEFileReader(isAES int, FileName string) (*TEEFileReader, error) {
+	rb := (*C.RingBuffer)(C.malloc(C.sizeof_RingBuffer))
+	if rb == nil { // 检查内存分配是否成功
+		return nil, fmt.Errorf("failed to allocate memory for RingBuffer")
+	}
 
-    // Convert Go int to C int
-    cIsAES := C.int(isAES)
-    // Convert Go string to C char
-    cFileName := C.CString(FileName)
+	// Convert Go int to C int
+	cIsAES := C.int(isAES)
 
-    defer C.free(unsafe.Pointer(cFileName))
+	C.init_ring_buffer(rb)
 
-	// 使用goroutine启动C函数
-	var wg sync.WaitGroup
-	wg.Add(1)
+	reader := &TEEFileReader{
+		rb:     rb,
+		readCh: make(chan struct{}, 1),
+	}
+
+	reader.wg.Add(1)
 	go func() {
-		defer wg.Done()
-        defer runtime.KeepAlive(nil) // Ensure the goroutine does not return before the C function completes
-
-		C.ipfs_keystone(cIsAES, cFileName)
+		defer reader.wg.Done() // 确保在goroutine结束时调用Done
+		C.ipfs_keystone(cIsAES, unsafe.Pointer(C.CString(FileName)), unsafe.Pointer(rb))
+		fmt.Println("TEE read file done")
+		close(reader.readCh)
 	}()
 
-	// 等待所有goroutines完成
-	wg.Wait()
-
+	return reader, nil
 }
+
+// Read 实现io.Reader接口的方法，从缓冲区读取数据到p切片
+func (r *TEEFileReader) Read(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.closed {
+		return 0, io.EOF
+	}
+
+	var readLen C.int
+	fmt.Println("go read ring buffer start")
+	result := C.ring_buffer_read((*C.RingBuffer)(r.rb), (*C.char)(unsafe.Pointer(&p[0])), C.int(len(p)), &readLen)
+	fmt.Println("go read ring buffer end")
+	if result == 0 { // 检查ring_buffer_read的结果
+		select {
+		case <-r.readCh:
+			if C.ring_buffer_space_used(r.rb) == 0 {
+				r.closed = true
+				return 0, io.EOF
+			}
+			return 0, nil
+		default:
+			return 0, nil
+		}
+	}
+	return int(readLen), nil
+}
+
+// Close 关闭TEEFileReader实例，释放相关资源
+func (r *TEEFileReader) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.closed {
+		r.closed = true
+		C.free(unsafe.Pointer(r.rb))  // 释放C语言分配的内存
+		close(r.readCh)  // 确保通道被关闭
+		r.wg.Wait()  // 等待后台goroutine完成
+	}
+	fmt.Println("TEEFileReader Close")
+	return nil
+}
+
+func Ipfs_keystone_test(isAES int, FileName string) (io.Reader){
+
+	// 打印FileName
+	fmt.Println("Processing file:", FileName)
+
+	reader, _ := NewTEEFileReader(isAES, FileName)
+	defer reader.Close()
+
+	var ior io.Reader = reader
+
+	return ior
+}
+
