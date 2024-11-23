@@ -19,7 +19,7 @@ type TEEFileReader struct {
 	readCh chan struct{}          // 通道用于通知读取完成
 	wg     sync.WaitGroup         // 等待组用于等待后台goroutine完成
 	mu     sync.Mutex             // 互斥锁，保护共享资源
-	closed bool                 // 标记是否已经关闭
+	closed bool                   // 标记是否已经关闭
 }
 
 // NewTEEFileReader 创建一个新的TEEFileReader实例
@@ -37,6 +37,7 @@ func NewTEEFileReader(isAES int, FileName string) (*TEEFileReader, error) {
 	reader := &TEEFileReader{
 		rb:     rb,
 		readCh: make(chan struct{}, 1),
+		closed: false,
 	}
 
 	reader.wg.Add(1)
@@ -44,7 +45,6 @@ func NewTEEFileReader(isAES int, FileName string) (*TEEFileReader, error) {
 		defer reader.wg.Done() // 确保在goroutine结束时调用Done
 		C.ipfs_keystone(cIsAES, unsafe.Pointer(C.CString(FileName)), unsafe.Pointer(rb))
 		fmt.Println("TEE read file done")
-		close(reader.readCh)
 	}()
 
 	return reader, nil
@@ -59,21 +59,10 @@ func (r *TEEFileReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	var readLen C.int
-	fmt.Println("go read ring buffer start")
+	var readLen C.int = 0;
 	result := C.ring_buffer_read((*C.RingBuffer)(r.rb), (*C.char)(unsafe.Pointer(&p[0])), C.int(len(p)), &readLen)
-	fmt.Println("go read ring buffer end")
 	if result == 0 { // 检查ring_buffer_read的结果
-		select {
-		case <-r.readCh:
-			if C.ring_buffer_space_used(r.rb) == 0 {
-				r.closed = true
-				return 0, io.EOF
-			}
-			return 0, nil
-		default:
-			return 0, nil
-		}
+		return int(readLen), io.EOF
 	}
 	return int(readLen), nil
 }
@@ -101,7 +90,7 @@ func Ipfs_keystone_test(isAES int, FileName string) (TEEFileReader){
 	reader, _ := NewTEEFileReader(isAES, FileName)
 	// defer reader.Close()
 
-	// var ior io.Reader = reader
+	// var ior io.ReadCloser = reader
 
 	return *reader
 }
