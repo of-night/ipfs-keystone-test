@@ -76,7 +76,7 @@ func (r *TEEFileReader) Close() error {
 		r.closed = true
 		C.free(unsafe.Pointer(r.rb))  // 释放C语言分配的内存
 		close(r.readCh)  // 确保通道被关闭
-		r.wg.Wait()  // 等待后台goroutine完成
+		// r.wg.Wait()  // 等待后台goroutine完成
 	}
 	fmt.Println("TEEFileReader Close")
 	return nil
