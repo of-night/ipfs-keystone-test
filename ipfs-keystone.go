@@ -93,16 +93,16 @@ func (r *TEEFileReader) Close() error {
 	return nil
 }
 
-func Ipfs_keystone_test(isAES int, FileName string) (io.Reader){
+func Ipfs_keystone_test(isAES int, FileName string) (TEEFileReader){
 
 	// 打印FileName
 	fmt.Println("Processing file:", FileName)
 
 	reader, _ := NewTEEFileReader(isAES, FileName)
-	defer reader.Close()
+	// defer reader.Close()
 
-	var ior io.Reader = reader
+	// var ior io.Reader = reader
 
-	return ior
+	return *reader
 }
 
