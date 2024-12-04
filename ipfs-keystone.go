@@ -95,3 +95,47 @@ func Ipfs_keystone_test(isAES int, FileName string) (TEEFileReader){
 	return *reader
 }
 
+func NewTEEFileReaderDe(isAES int, FileName string) (*TEEFileReader, error) {
+	rb := (*C.RingBuffer)(C.malloc(C.sizeof_RingBuffer))
+	if rb == nil { // 检查内存分配是否成功
+		return nil, fmt.Errorf("failed to allocate memory for RingBuffer")
+	}
+
+	// Convert Go int to C int
+	cIsAES := C.int(isAES)
+
+	C.init_ring_buffer(rb)
+
+	reader := &TEEFileReader{
+		rb:     rb,
+		readCh: make(chan struct{}, 1),
+		closed: false,
+	}
+
+	reader.wg.Add(1)
+	go func() {
+		defer reader.wg.Done() // 确保在goroutine结束时调用Done
+		C.ipfs_keystone_de(cIsAES, unsafe.Pointer(C.CString(FileName)), unsafe.Pointer(rb))
+		fmt.Println("TEE read file done")
+	}()
+
+	return reader, nil
+}
+
+// Write 实现io.Write接口的方法，从p切片读取数据到缓冲区
+func (r *TEEFileReader) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.closed {
+		return 0, io.EOF
+	}
+
+	var wrsult C.int = 0;
+	wrsult = C.ring_buffer_write((*C.RingBuffer)(r.rb), (*C.char)(unsafe.Pointer(&p[0])), C.size_t(len(p)))
+	if wrsult == 0 { // 检查ring_buffer_write的结果
+		return int(wrsult), io.EOF
+	}
+	return int(wrsult), nil
+}
+
