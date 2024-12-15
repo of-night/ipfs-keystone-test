@@ -11,6 +11,7 @@ import (
 	"io"
 	"unsafe"
 	"sync"
+//	"time"
 )
 
 // TEEFileReader 结构体封装了环形缓冲区的相关操作
@@ -96,6 +97,7 @@ func Ipfs_keystone_test(isAES int, FileName string) (TEEFileReader){
 }
 
 func NewTEEFileReaderDe(isAES int, FileName string) (*TEEFileReader, error) {
+
 	rb := (*C.RingBuffer)(C.malloc(C.sizeof_RingBuffer))
 	if rb == nil { // 检查内存分配是否成功
 		return nil, fmt.Errorf("failed to allocate memory for RingBuffer")
@@ -122,6 +124,19 @@ func NewTEEFileReaderDe(isAES int, FileName string) (*TEEFileReader, error) {
 	return reader, nil
 }
 
+func Ipfs_keystone_test_de(isAES int, FileName string) (TEEFileReader){
+
+	// 打印FileName
+	fmt.Println("Get file:", FileName)
+
+	reader, _ := NewTEEFileReaderDe(isAES, FileName)
+	// defer reader.Close()
+
+	// var ior io.ReadCloser = reader
+
+	return *reader
+}
+
 // Write 实现io.Write接口的方法，从p切片读取数据到缓冲区
 func (r *TEEFileReader) Write(p []byte) (int, error) {
 	r.mu.Lock()
@@ -137,5 +152,28 @@ func (r *TEEFileReader) Write(p []byte) (int, error) {
 		return int(wrsult), io.EOF
 	}
 	return int(wrsult), nil
+}
+
+// Close 关闭TEEFileReader实例，释放相关资源
+func (r *TEEFileReader) WaClose() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.closed {
+		r.closed = true
+		C.ring_buffer_stop((*C.RingBuffer)(r.rb));
+		// C.free(unsafe.Pointer(r.rb))  // 由c语言程序释放内存
+		close(r.readCh)  // 确保通道被关闭
+		for {
+			if C.ring_buffer_space_used((*C.RingBuffer)(r.rb)) == 0 {
+				C.free(unsafe.Pointer(r.rb))
+				break
+			}
+		}
+		// time.Sleep(1500 * time.Millisecond)  // 固定等待1.5s
+		// r.wg.Wait()  // 等待后台goroutine完成
+	}
+	fmt.Println("TEEFileReader WaClose")
+	return nil
 }
 
