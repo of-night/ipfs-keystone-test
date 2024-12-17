@@ -4,6 +4,7 @@ package ipfsKeystoneTest
 // #cgo CFLAGS: -I/usr/local/ipfs-keystone/include -I/usr/local/ipfs-keystone/include/host -I/usr/local/ipfs-keystone/include/edge
 // #include <stdlib.h>
 // #include "ipfs_keystone.h"
+// #include "ipfs_aes.h"
 import "C"
 
 import (
@@ -164,16 +165,33 @@ func (r *TEEFileReader) WaClose() error {
 		C.ring_buffer_stop((*C.RingBuffer)(r.rb));
 		// C.free(unsafe.Pointer(r.rb))  // 由c语言程序释放内存
 		close(r.readCh)  // 确保通道被关闭
-		for {
-			if C.ring_buffer_space_used((*C.RingBuffer)(r.rb)) == 0 {
-				C.free(unsafe.Pointer(r.rb))
-				break
-			}
-		}
+		C.ring_buffer_already_got()
 		// time.Sleep(1500 * time.Millisecond)  // 固定等待1.5s
 		// r.wg.Wait()  // 等待后台goroutine完成
 	}
 	fmt.Println("TEEFileReader WaClose")
 	return nil
+}
+
+// ==================================================================================
+//				AES Encrypt
+// ==================================================================================
+
+func Rv_AES_Encrypt(pt []byte, ptLen int, ct []byte)(int) {
+
+	ctLen := C.encrypt(unsafe.Pointer(&pt[0]), C.int(ptLen), unsafe.Pointer(&ct[0]))
+	// ctLen := C.encrypt(unsafe.Pointer(uintptr(unsafe.Pointer(&pt[0]))), C.int(ptLen), unsafe.Pointer(uintptr(unsafe.Pointer(&ct[0]))))
+	// ctLen := C.encrypt((*C.void)(unsafe.Pointer(&pt[0])), C.int(ptLen), (*C.void)(unsafe.Pointer(&ct[0])))
+	return int(ctLen)
+
+}
+
+func Rv_AES_Decrypt(ct []byte, ctLen int, pt []byte)(int) {
+
+	ptLen := C.decrypt(unsafe.Pointer(&ct[0]), C.int(ctLen), unsafe.Pointer(&pt[0]))
+	// ptLen := C.decrypt(unsafe.Pointer(uintptr(unsafe.Pointer(&ct[0]))), C.int(ctLen), unsafe.Pointer(uintptr(unsafe.Pointer(&pt[0]))))
+	// ptLen := C.decrypt((*C.void)(unsafe.Pointer(&ct[0])), C.int(ctLen), (*C.void)(unsafe.Pointer(&pt[0])))
+	return int(ptLen)
+
 }
 
