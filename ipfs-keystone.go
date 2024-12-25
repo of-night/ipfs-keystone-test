@@ -277,3 +277,20 @@ func (mtbr *MultiThreadedTEEFileReader)Read(p []byte) (int, error)  {
 	return int(readLen), nil
 }
 
+// Close 关闭TMultiThreadedTEEFileReader实例，释放相关资源
+func (mtbr *MultiThreadedTEEFileReader) Close() error {
+	mtbr.mu.Lock()
+	defer mtbr.mu.Unlock()
+
+	if !mtbr.closed {
+		mtbr.closed = true
+		C.destory_multi_threaded_ring_buffer((*C.MultiThreadedBuffer)(unsafe.Pointer(mtbr.mtb)))
+		// C.free(unsafe.Pointer(mtbr.mtb))  // 释放C语言分配的内存
+		close(mtbr.readCh)  // 确保通道被关闭
+		// mtbr.wg.Wait()  // 等待后台goroutine完成
+	}
+	fmt.Println("TEEFileReader Close")
+	return nil
+}
+
+
