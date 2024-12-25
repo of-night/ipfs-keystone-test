@@ -210,8 +210,8 @@ type MultiThreadedTEEFileReader struct {
 }
 
 
-// MultiThreadedBuffer 创建一个新的MultiThreadedTEEFileReader实例
-func NewMultiThreadedBuffer(isAES int, FileName string, fileSize int) (*MultiThreadedTEEFileReader, error) {
+// NewMultiThreadedTEEFileReader 创建一个新的MultiThreadedTEEFileReader实例
+func NewMultiThreadedTEEFileReader(isAES int, FileName string, fileSize int) (*MultiThreadedTEEFileReader, error) {
 	mtb := (*C.MultiThreadedBuffer)(C.malloc(C.sizeof_MultiThreadedBuffer))
 	if mtb == nil { // 检查内存分配是否成功
 		return nil, fmt.Errorf("failed to allocate memory for RingBuffer")
@@ -265,7 +265,7 @@ func (mtbr *MultiThreadedTEEFileReader)Read(p []byte) (int, error)  {
 	mtbr.mu.Lock()
 	defer mtbr.mu.Unlock()
 
-	if r.closed {
+	if mtbr.closed {
 		return 0, io.EOF
 	}
 
