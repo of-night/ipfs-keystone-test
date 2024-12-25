@@ -202,17 +202,17 @@ func Rv_AES_Decrypt(ct []byte, ctLen int, pt []byte)(int) {
 
 // TEEFileReader 结构体封装了环形缓冲区的相关操作
 type MultiThreadedTEEFileReader struct {
-	mtb     *C.MultiThreadedRingBuffer	// 指向C语言中的MultiThreadedRingBuffer结构
-	readCh chan struct{}			// 通道用于通知读取完成
-	wg     sync.WaitGroup			// 等待组用于等待后台goroutine完成
-	mu     sync.Mutex			// 互斥锁，保护共享资源
-	closed bool				// 标记是否已经关闭
+	mtb     *C.MultiThreadedBuffer		// 指向C语言中的MultiThreadedBuffer结构
+	readCh chan struct{}          		// 通道用于通知读取完成
+	wg     sync.WaitGroup         		// 等待组用于等待后台goroutine完成
+	mu     sync.Mutex             		// 互斥锁，保护共享资源
+	closed bool                   		// 标记是否已经关闭
 }
 
 
-// MultiThreadedTEEFileReader 创建一个新的MultiThreadedTEEFileReader实例
-func NewMultiThreadedTEEFileReader(isAES int, FileName string, fileSize int) (*MultiThreadedTEEFileReader, error) {
-	mtb := (*C.MultiThreadedTEEFileReader)(C.malloc(C.sizeof_MultiThreadedTEEFileReader))
+// MultiThreadedBuffer 创建一个新的MultiThreadedTEEFileReader实例
+func NewMultiThreadedBuffer(isAES int, FileName string, fileSize int) (*MultiThreadedTEEFileReader, error) {
+	mtb := (*C.MultiThreadedBuffer)(C.malloc(C.sizeof_MultiThreadedBuffer))
 	if mtb == nil { // 检查内存分配是否成功
 		return nil, fmt.Errorf("failed to allocate memory for RingBuffer")
 	}
