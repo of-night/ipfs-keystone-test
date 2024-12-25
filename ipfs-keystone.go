@@ -202,7 +202,7 @@ func Rv_AES_Decrypt(ct []byte, ctLen int, pt []byte)(int) {
 
 // TEEFileReader 结构体封装了环形缓冲区的相关操作
 type MultiThreadedTEEFileReader struct {
-	mtb     *C.MultiThreadedBuffer		// 指向C语言中的MultiThreadedBuffer结构
+	mtb     *C.MultiThreadedBuffer  	// 指向C语言中的MultiThreadedBuffer结构
 	readCh chan struct{}          		// 通道用于通知读取完成
 	wg     sync.WaitGroup         		// 等待组用于等待后台goroutine完成
 	mu     sync.Mutex             		// 互斥锁，保护共享资源
@@ -261,16 +261,16 @@ func MultiThreaded_Ipfs_keystone_test(isAES int, FileName string, fileSize int) 
 	return *reader
 }
 
-func (mtb *MultiThreadedTEEFileReader)Read(p []byte) (int, error)  {
-	mtb.mu.Lock()
-	defer mtb.mu.Unlock()
+func (mtbr *MultiThreadedTEEFileReader)Read(p []byte) (int, error)  {
+	mtbr.mu.Lock()
+	defer mtbr.mu.Unlock()
 
 	if r.closed {
 		return 0, io.EOF
 	}
 
 	var readLen C.int = 0;
-	result := C.which_pb_buffer_read((*C.MultiThreadedTEEFileReader)(unsafe.Pointer(mtb)), (*C.char)(unsafe.Pointer(&p[0])), C.int(len(p)), &readLen)
+	result := C.which_pb_buffer_read((*C.MultiThreadedBuffer)(unsafe.Pointer(mtbr.mtb)), (*C.char)(unsafe.Pointer(&p[0])), C.int(len(p)), &readLen)
 	if result == 0 { // 检查ring_buffer_read的结果
 		return int(readLen), io.EOF
 	}
