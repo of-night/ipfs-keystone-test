@@ -13,6 +13,10 @@ import (
 	"unsafe"
 	"sync"
 //	"time"
+	"bytes"
+
+	"os"
+	"os/exec"
 )
 
 // TEEFileReader 结构体封装了环形缓冲区的相关操作
@@ -237,14 +241,14 @@ func NewMultiThreadedTEEFileReader(isAES int, FileName string, fileSize int) (*M
 	go func() {
 		defer reader.wg.Done() // 确保在goroutine结束时调用Done
 		C.multi_ipfs_keystone_ppb_buffer_wrapper(cIsAES, unsafe.Pointer(C.CString(FileName)), unsafe.Pointer(mtb), 0, cAfileSize)
-		fmt.Println("TEE ring buffer read file done")
+		fmt.Println("MultiTEE buffer read file done")
 	}()
 
 	reader.wg.Add(1)
 	go func() {
 		defer reader.wg.Done() // 确保在goroutine结束时调用Done
-		C.multi_ipfs_keystone_hpb_buffer_wrapper(cIsAES, unsafe.Pointer(C.CString(FileName)), unsafe.Pointer(mtb), cAfileSize, cFileSize)
-		fmt.Println("TEE ring buffer read file done")
+		C.multi_ipfs_keystone_hpb_buffer_wrapper(cIsAES, unsafe.Pointer(C.CString(FileName)), unsafe.Pointer(mtb), cAfileSize + 1, cFileSize)
+		fmt.Println("MultiTEE ring buffer read file done")
 	}()
 
 	return reader, nil
@@ -293,4 +297,355 @@ func (mtbr *MultiThreadedTEEFileReader) Close() error {
 	return nil
 }
 
+
+
+// ==================================================================================
+//				Multi-process Keystone Encrypt
+// ==================================================================================
+
+const (
+	shmKey   = 241227 // 共享内存键值
+)
+
+type MultiProcessTEEFileReader struct {
+	shmaddr     []byte				  	// 共享内存的地址
+	shmsize     int				  		// 共享内存的长度
+	mpb		*C.MultiProcessSHMBuffer	// 指向C语言中的 MultiProcessSHMBuffer 结构
+	readCh chan struct{}          		// 通道用于通知读取完成
+	mu     sync.Mutex             		// 互斥锁，保护共享资源
+	closed bool                   		// 标记是否已经关闭
+}
+
+// 创建一个新的共享内存段
+func createShm(size int) ([]byte, error) {
+
+	shmaddr := C.creat_shareMemory(C.int(size))
+
+	// 错误写法 (*[size]byte)中 size 必须为常量，只是类型转换，并没有分配空间
+	// return (*[size]byte)(shmaddr)[:], nil
+	// [low:high:max] 获取内存切片low-high 可以索引low-high  数组实际空间大小为max
+	// 若不指定 max 则是前面类型的空间，即1 << 30 = 1GB
+	return (*[1 << 30]byte)(shmaddr)[:size:size], nil
+}
+
+// 连接到现有的共享内存段
+func attachShm(size int) ([]byte, error) {
+
+	shmaddr := C.attach_shareMemory(C.int(size))
+
+	// 错误写法 (*[size]byte)中 size 必须为常量，只是类型转换，并没有分配空间
+	// return (*[size]byte)(shmaddr)[:], nil
+	// [low:high:max] 获取内存切片low-high 可以索引low-high  数组实际空间大小为max
+	// 若不指定 max 则是前面类型的空间，即1 << 30 = 1GB
+	return (*[1 << 30]byte)(shmaddr)[:size:size], nil
+}
+
+// 断开与共享内存段的连接
+func detachShm(shm []byte) error {
+	C.detach_shareMemory(unsafe.Pointer(&shm[0]))
+
+	return nil
+}
+
+// 删除共享内存段
+func removeShm(shmsize int) error {
+	C.removeShm(C.int(shmsize))
+
+	return nil
+}
+
+// NewMultiProcessTEEFileReader MultiProcessTEEFileReader
+func NewMultiProcessTEEFileReader(isAES int, FileName string, fileSize int) (*MultiProcessTEEFileReader, error) {
+
+	// 创建共享内存片段
+	shmsize := fileSize + C.sizeof_MultiProcessSHMBuffer
+	shm, err := createShm(shmsize)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create shared memory: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Convert Go int to C int
+	cFileSize := C.int(fileSize)
+
+	cFileSize = C.alignedFileSize(cFileSize)
+	cAfileSize := C.aFileSize(cFileSize)
+
+	reader := &MultiProcessTEEFileReader{
+		shmaddr:    shm,
+		shmsize:	shmsize,
+		readCh: make(chan struct{}, 1),
+		closed: false,
+	}
+
+	// 启动第一个子进程，读取文件的前半部分
+	cmd1 := exec.Command("./child_process", fmt.Sprintf("%d", isAES), fmt.Sprintf("%d", shmsize), FileName, fmt.Sprintf("%d", 0), fmt.Sprintf("%d", cAfileSize))
+
+	// 创建缓冲区来存储标准输出和标准错误
+	var stdout1, stderr1 bytes.Buffer
+
+	// 将子进程的标准输出和标准错误重定向到上面创建的缓冲区
+	cmd1.Stdout = &stdout1
+	cmd1.Stderr = &stderr1
+
+	err = cmd1.Start()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to start first child process: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 启动第二个子进程，读取文件的后半部分
+	cmd2 := exec.Command("./child_process", fmt.Sprintf("%d", isAES), fmt.Sprintf("%d", shmsize), FileName, fmt.Sprintf("%d", cAfileSize), fmt.Sprintf("%d", cFileSize))
+
+	// 创建缓冲区来存储标准输出和标准错误
+    var stdout2, stderr2 bytes.Buffer
+
+    // 将子进程的标准输出和标准错误重定向到上面创建的缓冲区
+    cmd2.Stdout = &stdout2
+    cmd2.Stderr = &stderr2
+
+	err = cmd2.Start()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to start second child process: %v\n", err)
+		os.Exit(1)
+	}
+
+	// time.Sleep(1500 * time.Millisecond)
+
+	// // 打印子进程的标准输出
+    //     fmt.Printf("Child process output:\n%s\n", stdout1.String())
+    //     fmt.Printf("Child process output:\n%s\n", stdout2.String())
+
+	// cmd1.Wait()
+	// cmd2.Wait()
+
+	// // 打印子进程的标准输出
+    //     fmt.Printf("Child process output:\n%s\n", stdout1.String())
+    //     fmt.Printf("Child process output:\n%s\n", stdout2.String())
+
+	// // 打印子进程的输出
+    //     fmt.Printf("Child process output:\n%s\n", stderr1.String())
+    //     fmt.Printf("Child process output:\n%s\n", stderr2.String())
+
+
+	C.waitKeystoneReady(unsafe.Pointer(&reader.shmaddr[0]))
+
+	fmt.Printf("Child1 process output:\n%s\n", stdout1.String())
+	fmt.Printf("Child2 process output:\n%s\n", stdout2.String())
+
+	return reader, nil
+}
+
+
+func MultiProcess_Ipfs_keystone_test(isAES int, FileName string, fileSize int) (MultiProcessTEEFileReader){
+
+	// 打印FileName
+	fmt.Println("MultiProcess Processing file:", FileName)
+
+	reader, _ := NewMultiProcessTEEFileReader(isAES, FileName, fileSize)
+
+
+	return *reader
+}
+
+
+// Close 关闭MultiProcessTEEFileReader实例，释放相关资源
+func (mptr *MultiProcessTEEFileReader) Close() error {
+	mptr.mu.Lock()
+	defer mptr.mu.Unlock()
+
+	if !mptr.closed {
+		mptr.closed = true
+		close(mptr.readCh)  // 确保通道被关闭
+		defer detachShm(mptr.shmaddr)
+		defer removeShm(mptr.shmsize)
+	}
+	fmt.Println("MultiProcess TEEFileReader Close")
+	return nil
+}
+
+// 从共享内存中读取数据并打印出来
+func parentProcess(shmaddr []byte, shmsize int, p []byte, size int)(int, error) {
+
+	var readLen C.int = 0;
+	// 交给c语言函数处理
+	result := C.MultiProcessRead(unsafe.Pointer(&shmaddr[0]), C.int(shmsize), unsafe.Pointer(&p[0]), C.int(size), &readLen);
+
+	if result == 0 {
+		return int(readLen), io.EOF
+	}
+
+	return int(readLen), nil;
+}
+
+func (mtbr *MultiProcessTEEFileReader)Read(p []byte) (int, error)  {
+	mtbr.mu.Lock()
+	defer mtbr.mu.Unlock()
+
+	if mtbr.closed {
+		return 0, io.EOF
+	}
+
+	return parentProcess(mtbr.shmaddr, mtbr.shmsize, p, len(p))
+}
+
+
+// ==================================================================================
+//				Multi-process Cross-read Keystone Encrypt
+// ==================================================================================
+
+
+type MultiProcessCrossTEEFileReader struct {
+	shmaddr     []byte				  	// 共享内存的地址
+	shmsize     int64				  		// 共享内存的长度
+	readCh chan struct{}          		// 通道用于通知读取完成
+	mu     sync.Mutex             		// 互斥锁，保护共享资源
+	closed bool                   		// 标记是否已经关闭
+}
+
+// 创建一个新的共享内存段
+func longcreateShm(size int64) ([]byte, error) {
+
+	shmaddr := C.long_create_shareMemory(C.longlong(size))
+
+	// 错误写法 (*[size]byte)中 size 必须为常量，只是类型转换，并没有分配空间
+	// return (*[size]byte)(shmaddr)[:], nil
+	// [low:high:max] 获取内存切片low-high 可以索引low-high  数组实际空间大小为max
+	// 若不指定 max 则是前面类型的空间，即1 << 30 = 1GB
+	return (*[1 << 30]byte)(shmaddr)[:size:size], nil
+}
+
+// 删除共享内存段
+func longremoveShm(shmsize int64) error {
+	C.long_removeShm(C.longlong(shmsize))
+
+	return nil
+}
+
+
+// NewMultiProcessCrossTEEFileReader MultiProcessCrossTEEFileReader
+func NewMultiProcessCrossTEEFileReader(isAES int, FileName string, fileSize int64) (*MultiProcessCrossTEEFileReader, error) {
+
+	// Convert Go int to C int
+	cFileSize := C.longlong(fileSize)
+
+	cFileSize = C.long_alignedFileSize(cFileSize)
+	cBlocksNums := C.long_alignedFileSize_blocksnums(cFileSize)
+	
+	// 创建共享内存片段
+	shmsize := C.sizeof_MultiProcessCrossSHMBuffer + (int64(cBlocksNums) * 4) + int64(cFileSize)
+	shm, err := longcreateShm(shmsize)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create shared memory: %v\n", err)
+		os.Exit(1)
+	}
+
+	reader := &MultiProcessCrossTEEFileReader{
+		shmaddr:    shm,
+		shmsize:	shmsize,
+		readCh: make(chan struct{}, 1),
+		closed: false,
+	}
+
+	// 启动keystone之前先初始化内存空间
+	C.crossInitSHM(unsafe.Pointer(&reader.shmaddr[0]), cBlocksNums);
+	// fmt.Println("MultiProcess Processing file test")
+
+	// 启动第一个子进程，读取文件的前半部分
+	cmd1 := exec.Command("./cross_child_process", fmt.Sprintf("%d", isAES), fmt.Sprintf("%d", shmsize), FileName, fmt.Sprintf("%d", 0))
+
+	// 创建缓冲区来存储标准输出和标准错误
+	var stdout1, stderr1 bytes.Buffer
+
+	// 将子进程的标准输出和标准错误重定向到上面创建的缓冲区
+	cmd1.Stdout = &stdout1
+	cmd1.Stderr = &stderr1
+
+	err = cmd1.Start()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to start first child process: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 启动第二个子进程，读取文件的后半部分
+	cmd2 := exec.Command("./cross_child_process", fmt.Sprintf("%d", isAES), fmt.Sprintf("%d", shmsize), FileName, fmt.Sprintf("%d", 1))
+
+	// 创建缓冲区来存储标准输出和标准错误
+	var stdout2, stderr2 bytes.Buffer
+
+	// 将子进程的标准输出和标准错误重定向到上面创建的缓冲区
+	cmd2.Stdout = &stdout2
+	cmd2.Stderr = &stderr2
+
+	err = cmd2.Start()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to start second child process: %v\n", err)
+		os.Exit(1)
+	}
+
+	C.crosswaitKeystoneReady(unsafe.Pointer(&reader.shmaddr[0]))
+
+	// fmt.Println("MultiProcess Processing file wait")
+
+	// cmd1.Wait()
+	// cmd2.Wait()
+
+	// // 打印子进程的标准输出
+    //     fmt.Printf("Child process output:\n%s\n", stdout1.String())
+    //     fmt.Printf("Child process output:\n%s\n", stdout2.String())
+
+	// // 打印子进程的标准错误输出
+    //     fmt.Printf("Child process err output:\n%s\n", stderr1.String())
+    //     fmt.Printf("Child process err output:\n%s\n", stderr2.String())
+
+	return reader, nil
+}
+
+
+func MultiProcess_Cross_Ipfs_keystone_test(isAES int, FileName string, fileSize int64) (MultiProcessCrossTEEFileReader){
+
+	// 打印FileName
+	fmt.Println("MultiProcess Processing file:", FileName)
+
+	reader, _ := NewMultiProcessCrossTEEFileReader(isAES, FileName, fileSize)
+
+
+	return *reader
+}
+
+func (mpcr *MultiProcessCrossTEEFileReader)Read(p []byte) (int, error)  {
+	mpcr.mu.Lock()
+	defer mpcr.mu.Unlock()
+
+	if mpcr.closed {
+		return 0, io.EOF
+	}
+
+	// fmt.Println("MultiProcess Processing read start")
+	var readLen C.int = 0;
+	// 交给c语言函数处理
+	result := C.MultiProcessCrossRead(unsafe.Pointer(&mpcr.shmaddr[0]), C.int(mpcr.shmsize), unsafe.Pointer(&p[0]), C.int(len(p)), &readLen);
+	if result == 0 {
+		return int(readLen), io.EOF
+	}
+
+	// fmt.Println("MultiProcess Processing read done")
+
+	return int(readLen), nil;
+}
+
+// Close 关闭MultiProcessCrossTEEFileReader实例，释放相关资源
+func (mpcr *MultiProcessCrossTEEFileReader) Close() error {
+	mpcr.mu.Lock()
+	defer mpcr.mu.Unlock()
+
+	if !mpcr.closed {
+		mpcr.closed = true
+		close(mpcr.readCh)  // 确保通道被关闭
+		defer detachShm(mpcr.shmaddr)
+		defer longremoveShm(mpcr.shmsize)
+	}
+	fmt.Println("MultiProcess Cross TEEFileReader Close")
+	return nil
+}
 
