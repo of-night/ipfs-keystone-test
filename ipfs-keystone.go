@@ -17,6 +17,10 @@ import (
 
 	"os"
 	"os/exec"
+	"bytes"
+
+	"os"
+	"os/exec"
 )
 
 // TEEFileReader 结构体封装了环形缓冲区的相关操作
@@ -242,11 +246,14 @@ func NewMultiThreadedTEEFileReader(isAES int, FileName string, fileSize int) (*M
 		defer reader.wg.Done() // 确保在goroutine结束时调用Done
 		C.multi_ipfs_keystone_ppb_buffer_wrapper(cIsAES, unsafe.Pointer(C.CString(FileName)), unsafe.Pointer(mtb), 0, cAfileSize)
 		fmt.Println("MultiTEE buffer read file done")
+		fmt.Println("MultiTEE buffer read file done")
 	}()
 
 	reader.wg.Add(1)
 	go func() {
 		defer reader.wg.Done() // 确保在goroutine结束时调用Done
+		C.multi_ipfs_keystone_hpb_buffer_wrapper(cIsAES, unsafe.Pointer(C.CString(FileName)), unsafe.Pointer(mtb), cAfileSize + 1, cFileSize)
+		fmt.Println("MultiTEE ring buffer read file done")
 		C.multi_ipfs_keystone_hpb_buffer_wrapper(cIsAES, unsafe.Pointer(C.CString(FileName)), unsafe.Pointer(mtb), cAfileSize + 1, cFileSize)
 		fmt.Println("MultiTEE ring buffer read file done")
 	}()
