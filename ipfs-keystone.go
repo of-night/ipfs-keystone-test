@@ -649,3 +649,122 @@ func (mpcr *MultiProcessCrossTEEFileReader) Close() error {
 	return nil
 }
 
+
+// ==================================================================================
+//				Multi-process Cross-read Flexible Keystone Encrypt
+// ==================================================================================
+
+type MultiProcessCrossTEEFileFlexibleReader struct {
+	shmaddr     []byte				  	// 共享内存的地址
+	shmsize     int64				  	// 共享内存的长度
+	readCh chan struct{}          		// 通道用于通知读取完成
+	mu     sync.Mutex             		// 互斥锁，保护共享资源
+	closed bool                   		// 标记是否已经关闭
+}
+
+
+// NewMultiProcessCrossTEEFileFlexibleReader MultiProcessCrossTEEFileFlexibleReader
+func NewMultiProcessCrossTEEFileFlexibleReader(isAES int, FileName string, fileSize int64, flexible int) (*MultiProcessCrossTEEFileFlexibleReader, error) {
+
+	// Convert Go int to C int
+	cFileSize := C.longlong(fileSize)
+
+	cFileSize = C.long_alignedFileSize(cFileSize)
+	cBlocksNums := C.long_alignedFileSize_blocksnums(cFileSize)
+	
+	// 创建共享内存片段
+	shmsize := C.sizeof_MultiProcessCrossFlexibleSHMBuffer + (int64(cBlocksNums) * 4) + int64(cFileSize)
+	shm, err := longcreateShm(shmsize)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create shared memory: %v\n", err)
+		os.Exit(1)
+	}
+
+	reader := &MultiProcessCrossTEEFileFlexibleReader{
+		shmaddr:    shm,
+		shmsize:	shmsize,
+		readCh: make(chan struct{}, 1),
+		closed: false,
+	}
+
+	// 启动keystone之前先初始化内存空间
+	C.flexiblecrossInitSHM(unsafe.Pointer(&reader.shmaddr[0]), cBlocksNums);
+	// fmt.Println("MultiProcess Processing file test")
+
+	var numflexible int = 0
+	// MAXNUM 10
+	C.fixFlexibleNum(unsafe.Pointer(&flexible))
+	for numflexible < flexible {
+
+		// 启动第一个子进程，读取文件的前半部分
+		cmd := exec.Command("./flexible_cross_child_process", 
+			fmt.Sprintf("%d", isAES), 
+			fmt.Sprintf("%d", shmsize), 
+			FileName, 
+			fmt.Sprintf("%d", numflexible), 
+			fmt.Sprintf("%d", flexible),
+		)
+
+		err = cmd.Start()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to start %d child process: %v\n", numflexible, err)
+			os.Exit(1)
+		}
+
+	}
+
+	C.flexiblecrosswaitKeystoneReady(unsafe.Pointer(&reader.shmaddr[0]), C.int(flexible))
+
+	return reader, nil
+}
+
+
+func MultiProcess_Cross_Flexible_Ipfs_keystone_test(isAES int, FileName string, fileSize int64, flexible int) (MultiProcessCrossTEEFileFlexibleReader){
+
+	// 打印FileName
+	fmt.Println("MultiProcess flexible Processing file:", FileName)
+
+	reader, _ := NewMultiProcessCrossTEEFileFlexibleReader(isAES, FileName, fileSize, flexible)
+
+
+	return *reader
+}
+
+
+func (mpcfr *MultiProcessCrossTEEFileFlexibleReader)Read(p []byte) (int, error)  {
+	mpcfr.mu.Lock()
+	defer mpcfr.mu.Unlock()
+
+	if mpcfr.closed {
+		return 0, io.EOF
+	}
+
+	// fmt.Println("MultiProcess Processing read start")
+	var readLen C.int = 0;
+	// 交给c语言函数处理
+	result := C.MultiProcessCrossReadFlexible(unsafe.Pointer(&mpcfr.shmaddr[0]), C.int(mpcfr.shmsize), unsafe.Pointer(&p[0]), C.int(len(p)), &readLen);
+	if result == 0 {
+		return int(readLen), io.EOF
+	}
+
+	// fmt.Println("MultiProcess Processing read done")
+
+	return int(readLen), nil;
+}
+
+// Close 关闭 MultiProcessCrossTEEFileFlexibleReader 实例，释放相关资源
+func (mpcfr *MultiProcessCrossTEEFileFlexibleReader) Close() error {
+	mpcfr.mu.Lock()
+	defer mpcfr.mu.Unlock()
+
+	if !mpcfr.closed {
+		mpcfr.closed = true
+		close(mpcfr.readCh)  // 确保通道被关闭
+		defer detachShm(mpcfr.shmaddr)
+		defer longremoveShm(mpcfr.shmsize)
+	}
+	fmt.Println("MultiProcess Cross TEEFileReader Close")
+	return nil
+}
+
+
