@@ -855,31 +855,65 @@ func NewMultiProcessTEEDispatch(isAES int, fileSize uint64, flexible int) (*Mult
 
 	var shmsize int64;
 	// 创建共享内存片段
-	for i := 0; i < flexible; i++ {
-		var snumber int64;
-		if seblock > 0 {
-			snumber = 1
-		} else {
-			snumber = 0;
+	if (seblock == 0) {
+		for i := 0; i < flexible; i++ {
+			// 每个enclave的共享内存的大小，调度器与enclave之间
+			if (i == (flexible - 1)) {
+				if eblock == 0 {
+					shmsize = C.sizeof_MultiProcessTEEDispatchSHMBuffer
+				} else {
+					shmsize = C.sizeof_MultiProcessTEEDispatchSHMBuffer + (eblock - 1)*(4+262144) + (int64)(4 + (fileSize & 0x3ffff))
+				}
+				
+			} else {
+				shmsize = C.sizeof_MultiProcessTEEDispatchSHMBuffer + eblock*(4+262144)
+			}
+			
+			// 每一个enclave与dispath之间都有一个共享内存
+			shm, err := dispath_longcreateShm(shmsize, i)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to create shared memory: %v\n", err)
+				os.Exit(1)
+			}
+			reader.shmsm[i] = Shmsm{
+				shmaddr: shm,
+				shmsize: shmsize,
+			}
+			// 启动keystone之前先初始化内存空间
+			C.dispath_InitSHM(unsafe.Pointer(&reader.shmsm[i].shmaddr[0]), C.longlong(eblock));
 		}
-		seblock -= 1
-		// 每个enclave的共享内存的大小，调度器与enclave之间
-		shmsize := C.sizeof_MultiProcessTEEDispatchSHMBuffer + (eblock+snumber)*(4+256*1024)
-		// 每一个enclave与dispath之间都有一个共享内存
-		shm, err := dispath_longcreateShm(shmsize, i)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create shared memory: %v\n", err)
-			os.Exit(1)
+	} else {
+		for i := 0; i < flexible; i++ {
+			var snumber int64;
+			var snumber_size int64;
+			if seblock > 1 {
+				snumber = 1
+				snumber_size = 4 + 262144
+			} else if seblock == 1{
+				snumber = 1
+				snumber_size = (int64)(4 + (fileSize & 0x3ffff))
+			} else {
+				snumber = 0
+				snumber_size = 0
+			}
+			seblock -= 1
+			// 每个enclave的共享内存的大小，调度器与enclave之间
+			// shmsize = C.sizeof_MultiProcessTEEDispatchSHMBuffer + (eblock+snumber)*(4+256*1024)
+			shmsize = C.sizeof_MultiProcessTEEDispatchSHMBuffer + eblock*(4+262144) + snumber_size;
+			// 每一个enclave与dispath之间都有一个共享内存
+			shm, err := dispath_longcreateShm(shmsize, i)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to create shared memory: %v\n", err)
+				os.Exit(1)
+			}
+			reader.shmsm[i] = Shmsm{
+				shmaddr: shm,
+				shmsize: shmsize,
+			}
+			
+			// 启动keystone之前先初始化内存空间
+			C.dispath_InitSHM(unsafe.Pointer(&reader.shmsm[i].shmaddr[0]), C.longlong(eblock+snumber));
 		}
-		reader.shmsm[i] = Shmsm{
-			shmaddr: shm,
-			shmsize: shmsize,
-		}
-
-		// fmt.Println("i:%d, shmsize:%d", i, shmsize)
-		
-		// 启动keystone之前先初始化内存空间
-		C.dispath_InitSHM(unsafe.Pointer(&reader.shmsm[i].shmaddr[0]), C.longlong(eblock+snumber));
 	}
 
 	// fmt.Println("ipfs-keystone testing SHM")
@@ -956,7 +990,7 @@ func (MPDispath *MultiProcessTEEDispatch) Write(p []byte) (int, error) {
 	// fmt.Println("ipfs testing dispath 1 block blockcount=%d", MPDispath.blockcount)
 	// fmt.Println("ipfs testing dispath 1 block blockbytes=%d", MPDispath.blockbytes)
 
-	var sbytes int64 = int64(256*1024 - (MPDispath.blockbytes + int64(len(p))))
+	var sbytes int64 = int64(262144 - (MPDispath.blockbytes + int64(len(p))))
 
 	var bnumber int64;
 	
@@ -974,7 +1008,7 @@ func (MPDispath *MultiProcessTEEDispatch) Write(p []byte) (int, error) {
 			return int(readLen), io.EOF
 		}
 	} else {
-		var syx int = int(256*1024 - MPDispath.blockbytes)
+		var syx int = int(262144 - MPDispath.blockbytes)
 		result := C.dispath_data_block_4096(unsafe.Pointer(&MPDispath.shmsm[bnumber].shmaddr[0]), C.longlong(MPDispath.shmsm[bnumber].shmsize), (*C.char)(unsafe.Pointer(&p[0])), C.int(syx), &readLen)
 		// fmt.Println("ipfs testing dispath block oonly bnumber=%d, len=%d", bnumber, syx)
 		if result == 0 {
