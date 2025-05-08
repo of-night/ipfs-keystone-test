@@ -792,6 +792,11 @@ func DispathSetLength(size uint64) {
 	C.dispathSetLength(C.ulonglong(size))
 }
 
+// 获取递增的engine_id函数
+func GetDispathEngineSeq() (uint64) {
+	return uint64(C.getDispathEngineSeq())
+}
+
 // 创建一个新的共享内存段
 func dispath_longcreateShm(size int64, en_id int) ([]byte, error) {
 
@@ -918,6 +923,9 @@ func NewMultiProcessTEEDispatch(isAES int, fileSize uint64, flexible int) (*Mult
 
 	// fmt.Println("ipfs-keystone testing SHM")
 
+	// 获取当前ms_group的 engine_id
+	dispathEngineSeq := GetDispathEngineSeq()
+
 	for numflexible:=0;numflexible<flexible;numflexible++ {
 		// var stdout, stderr bytes.Buffer
 
@@ -927,6 +935,7 @@ func NewMultiProcessTEEDispatch(isAES int, fileSize uint64, flexible int) (*Mult
 			fmt.Sprintf("%d", shmsize), 
 			fmt.Sprintf("%d", numflexible), 
 			fmt.Sprintf("%d", flexible),
+			fmt.Sprintf("%d", dispathEngineSeq),
 		)
 
 		// cmd.Stdout = &stdout
