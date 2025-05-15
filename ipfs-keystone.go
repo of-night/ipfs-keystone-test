@@ -1079,3 +1079,164 @@ func (MPDispath *MultiProcessTEEDispatch) Close() error {
 	return nil
 }
 
+
+// ==================================================================================
+//				Multi-process Keystone Decrypt secure dispatch
+// ==================================================================================
+
+type MultiProcessTEESecureDispatch struct {
+	shmaddr     []byte				  	// 共享内存的地址
+	shmsize     uint64				  	// 共享内存的长度
+	blockNum 	uint64
+	blockcount int64
+	blockbytes int64
+	flexible int
+	readCh chan struct{}          		// 通道用于通知读取完成
+	mu     sync.Mutex             		// 互斥锁，保护共享资源
+	closed bool                   		// 标记是否已经关闭
+}
+
+// 创建一个新的共享内存段
+func secure_dispatch_ulonglongcreateShm(shmsize uint64) ([]byte, error) {
+
+	shmaddr := C.secure_dispatch_ulnoglong_create_shareMemory(C.ulonglong(shmsize))
+
+	// 错误写法 (*[size]byte)中 size 必须为常量，只是类型转换，并没有分配空间
+	// return (*[size]byte)(shmaddr)[:], nil
+	// [low:high:max] 获取内存切片low-high 可以索引low-high  数组实际空间大小为max
+	// 若不指定 max 则是前面类型的空间，即1 << 30 = 1GB
+	return (*[1 << 30]byte)(shmaddr)[:shmsize:shmsize], nil
+}
+
+// NewMultiProcessTEESecureDispatch MultiProcessTEESecureDispatch
+func NewMultiProcessTEESecureDispatch(isAES int, fileSize uint64, flexible int) (*MultiProcessTEESecureDispatch, error) {
+
+	// MAXNUM <= 10
+	C.fixFlexibleNum(unsafe.Pointer(&flexible))
+
+	// 创建共享内存片段
+	var blockNum uint64
+	shmsize := uint64(C.MultiProcessTEESecureDispatchGetSHMSize(C.ulonglong(fileSize), unsafe.Pointer(&blockNum), C.int(flexible)))
+	shmaddr, err := secure_dispatch_ulonglongcreateShm(shmsize)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create shared memory: %v\n", err)
+		os.Exit(1)
+	}
+	
+	reader := &MultiProcessTEESecureDispatch{
+		shmaddr:    shmaddr,
+		shmsize:	shmsize,
+		blockNum: 	blockNum,
+		blockcount: 0,
+		blockbytes: 0,
+		flexible: 	flexible,
+		readCh: 	make(chan struct{}, 1),
+		closed: 	false,
+	}
+
+	C.secure_dispacth_initSHM(unsafe.Pointer(&reader.shmaddr[0]), C.ulonglong(blockNum), C.int(flexible));
+
+	// fmt.Println("ipfs-keystone testing SHM")
+
+	// 获取当前ms_group的 engine_id  
+	// dispatch
+	dispatchEngineSeq := GetDispathEngineSeq()
+
+	for numflexible:=0;numflexible<flexible;numflexible++ {
+		// var stdout, stderr bytes.Buffer
+
+		// 启动第一个子进程，读取文件的前半部分
+		cmd := exec.Command("./secure_dispatch_child_process", 
+			fmt.Sprintf("%d", isAES), 
+			fmt.Sprintf("%d", shmsize), 
+			fmt.Sprintf("%d", numflexible), 
+			fmt.Sprintf("%d", flexible),
+			fmt.Sprintf("%d", dispatchEngineSeq),
+		)
+
+		// cmd.Stdout = &stdout
+		// cmd.Stderr = &stderr
+
+		err := cmd.Start()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to start %d child process: %v\n", numflexible, err)
+			os.Exit(1)
+		}
+
+		// fmt.Printf("ipfs-keystone Child %d process output:\n%s\n", numflexible, stdout.String())
+		// fmt.Printf("ipfs-keystone Child %d process err   :\n%s\n", numflexible, stderr.String())
+	}
+
+	
+	// fmt.Printf("ipfs-keystone testing numberflexible Sleep 1500 ms\n")
+	// time.Sleep(1500 * time.Millisecond)
+
+	// fmt.Println("ipfs-keystone testing cmd Start")
+	
+	C.secure_dispatch_waitKeystoneReady(unsafe.Pointer(&reader.shmaddr[0]), C.int(flexible))
+
+	fmt.Println("ipfs-keystone testing ready")
+
+	return reader, nil
+}
+
+func MultiProcess_Secure_Dispatch_Ipfs_keystone_test(isAES int, flexible int) (MultiProcessTEESecureDispatch){
+
+	// 打印
+	fmt.Println("MultiProcess secure dispatch Processing...")
+
+	// 获取总大小
+	var fileSize uint64
+	C.dispathGetLength((*C.ulonglong)(unsafe.Pointer(&fileSize)))
+
+	reader, _ := NewMultiProcessTEESecureDispatch(isAES, fileSize, flexible)
+
+
+	return *reader
+}
+
+// Write 实现io.Write接口的方法，从p切片读取数据到缓冲区
+func (MPSecureDispath *MultiProcessTEESecureDispatch) Write(p []byte) (int, error) {
+	MPSecureDispath.mu.Lock()
+	defer MPSecureDispath.mu.Unlock()
+
+	if MPSecureDispath.closed {
+		return 0, io.EOF
+	}
+
+	var readLen C.int = 0;
+	
+	// fmt.Println("ipfs testing dispath 1 block blockcount=%d", MPSecureDispath.blockcount)
+	// fmt.Println("ipfs testing dispath 1 block blockbytes=%d", MPSecureDispath.blockbytes)
+
+	result := C.secure_dispatch_write(unsafe.Pointer(&MPSecureDispath.shmaddr[0]), C.longlong(MPSecureDispath.shmsize), (*C.char)(unsafe.Pointer(&p[0])), C.int(len(p)), &readLen, C.int(MPSecureDispath.flexible))
+
+	if result == 0 {
+		return int(readLen), io.EOF
+	}
+
+	return int(readLen), nil
+}
+
+// Close 关闭TEEFileReader实例，释放相关资源
+func (MPSecureDispath *MultiProcessTEESecureDispatch) Close() error {
+	MPSecureDispath.mu.Lock()
+	defer MPSecureDispath.mu.Unlock()
+
+	if !MPSecureDispath.closed {
+		MPSecureDispath.closed = true
+		close(MPSecureDispath.readCh)  // 确保通道被关闭
+		// defer detachShm(MPSecureDispath.shmaddr)
+
+		// 等待 Keystone done
+		fmt.Println("ipfs testing wait keystone done")
+		C.secure_dispatch_waitKeystoneDone(unsafe.Pointer(&MPSecureDispath.shmaddr[0]), C.int(MPSecureDispath.flexible))
+
+		// 断开连接共享内存
+		defer C.secure_dispatch_detach_shareMemory(unsafe.Pointer(&MPSecureDispath.shmaddr[0]))
+		// 删除共享内存段
+		defer C.secure_dispatch_ulnoglong_remove_shareMemory(C.ulonglong(MPSecureDispath.shmsize))
+	}
+	fmt.Println("TEEWriterSeucreDispacth Close")
+	return nil
+}
