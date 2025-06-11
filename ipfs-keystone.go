@@ -324,8 +324,8 @@ func createShm(size int) ([]byte, error) {
 	// 错误写法 (*[size]byte)中 size 必须为常量，只是类型转换，并没有分配空间
 	// return (*[size]byte)(shmaddr)[:], nil
 	// [low:high:max] 获取内存切片low-high 可以索引low-high  数组实际空间大小为max
-	// 若不指定 max 则是前面类型的空间，即1 << 30 = 1GB
-	return (*[1 << 30]byte)(shmaddr)[:size:size], nil
+	// 若不指定 max 则是前面类型的空间，即1 << 32 = 1GB
+	return (*[1 << 32]byte)(shmaddr)[:size:size], nil
 }
 
 // 连接到现有的共享内存段
@@ -336,8 +336,8 @@ func attachShm(size int) ([]byte, error) {
 	// 错误写法 (*[size]byte)中 size 必须为常量，只是类型转换，并没有分配空间
 	// return (*[size]byte)(shmaddr)[:], nil
 	// [low:high:max] 获取内存切片low-high 可以索引low-high  数组实际空间大小为max
-	// 若不指定 max 则是前面类型的空间，即1 << 30 = 1GB
-	return (*[1 << 30]byte)(shmaddr)[:size:size], nil
+	// 若不指定 max 则是前面类型的空间，即1 << 32 = 1GB
+	return (*[1 << 32]byte)(shmaddr)[:size:size], nil
 }
 
 // 断开与共享内存段的连接
@@ -511,8 +511,8 @@ func longcreateShm(size int64) ([]byte, error) {
 	// 错误写法 (*[size]byte)中 size 必须为常量，只是类型转换，并没有分配空间
 	// return (*[size]byte)(shmaddr)[:], nil
 	// [low:high:max] 获取内存切片low-high 可以索引low-high  数组实际空间大小为max
-	// 若不指定 max 则是前面类型的空间，即1 << 30 = 1GB
-	return (*[1 << 30]byte)(shmaddr)[:size:size], nil
+	// 若不指定 max 则是前面类型的空间，即1 << 32 = 1GB
+	return (*[1 << 32]byte)(shmaddr)[:size:size], nil
 }
 
 // 删除共享内存段
@@ -805,8 +805,8 @@ func dispath_longcreateShm(size int64, en_id int) ([]byte, error) {
 	// 错误写法 (*[size]byte)中 size 必须为常量，只是类型转换，并没有分配空间
 	// return (*[size]byte)(shmaddr)[:], nil
 	// [low:high:max] 获取内存切片low-high 可以索引low-high  数组实际空间大小为max
-	// 若不指定 max 则是前面类型的空间，即1 << 30 = 1GB
-	return (*[1 << 30]byte)(shmaddr)[:size:size], nil
+	// 若不指定 max 则是前面类型的空间，即1 << 32 = 1GB
+	return (*[1 << 32]byte)(shmaddr)[:size:size], nil
 }
 
 // 断开连接共享内存
@@ -1104,8 +1104,8 @@ func secure_dispatch_ulonglongcreateShm(shmsize uint64) ([]byte, error) {
 	// 错误写法 (*[size]byte)中 size 必须为常量，只是类型转换，并没有分配空间
 	// return (*[size]byte)(shmaddr)[:], nil
 	// [low:high:max] 获取内存切片low-high 可以索引low-high  数组实际空间大小为max
-	// 若不指定 max 则是前面类型的空间，即1 << 30 = 1GB
-	return (*[1 << 30]byte)(shmaddr)[:shmsize:shmsize], nil
+	// 若不指定 max 则是前面类型的空间，即1 << 32 = 1GB
+	return (*[1 << 32]byte)(shmaddr)[:shmsize:shmsize], nil
 }
 
 // NewMultiProcessTEESecureDispatch MultiProcessTEESecureDispatch
@@ -1280,8 +1280,8 @@ func the_new_secure_dispatch_ulonglongcreateShm_just_call(shmsize uint64) ([]byt
 	// 错误写法 (*[size]byte)中 size 必须为常量，只是类型转换，并没有分配空间
 	// return (*[size]byte)(shmaddr)[:], nil
 	// [low:high:max] 获取内存切片low-high 可以索引low-high  数组实际空间大小为max
-	// 若不指定 max 则是前面类型的空间，即1 << 30 = 1GB
-	return (*[1 << 30]byte)(shmaddr)[:shmsize:shmsize], nil
+	// 若不指定 max 则是前面类型的空间，即1 << 32 = 1GB
+	return (*[1 << 32]byte)(shmaddr)[:shmsize:shmsize], nil
 }
 
 // NewTheNewDirMultiProcessTEESecureDispatchJustCall TheNewDirMultiProcessTEESecureDispatchJustCall
@@ -1365,9 +1365,9 @@ func TheNewDirSecureDispathSetLength(tee_just_call_reader *TheNewDirMultiProcess
 	// 错误写法 (*[size]byte)中 size 必须为常量，只是类型转换，并没有分配空间
 	// return (*[size]byte)(shmaddr)[:], nil
 	// [low:high:max] 获取内存切片low-high 可以索引low-high  数组实际空间大小为max
-	// 若不指定 max 则是前面类型的空间，即1 << 30 = 1GB
+	// 若不指定 max 则是前面类型的空间，即1 << 32 = 4GB
 	reader := &TheNewDirMultiProcessTEESecureDispatch{
-		shmaddr:    (*[1 << 30]byte)(shmaddr)[:shmsize:shmsize],
+		shmaddr:    (*[1 << 32]byte)(shmaddr)[:shmsize:shmsize],
 		shmsize:	shmsize,
 		shmaddr_justcall:   tee_just_call_reader.shmaddr,
 		shmsize_justcall:	tee_just_call_reader.shmsize,
@@ -1433,5 +1433,140 @@ func (theNDMPSecureDispath *TheNewDirMultiProcessTEESecureDispatch) Close() erro
 		defer C.the_new_secure_dispatch_ulnoglong_remove_shareMemory(C.ulonglong(theNDMPSecureDispath.shmsize), C.longlong(theNDMPSecureDispath.fileCount))
 	}
 	fmt.Println("the New TEEWriterSeucreDispacth Close")
+	return nil
+}
+
+
+// ==================================================================================
+//				The new dir Keystone Decrypt
+// ==================================================================================
+
+type TheNewDirTEEFileReaderJustCall struct {
+	rb     *C.RingBuffer          // 指向C语言中的RingBuffer结构
+	kjb    *C.KeystoneJustReady          
+	readCh chan struct{}          // 通道用于通知读取完成
+	wg     sync.WaitGroup         // 等待组用于等待后台goroutine完成
+	mu     sync.Mutex             // 互斥锁，保护共享资源
+	closed bool                   // 标记是否已经关闭
+}
+
+// TheNewDirTEEFileReader 结构体封装了环形缓冲区的相关操作
+type TheNewDirTEEFileReader struct {
+	rb     *C.RingBuffer          // 指向C语言中的RingBuffer结构
+	kjb    *C.KeystoneJustReady
+	readCh chan struct{}          // 通道用于通知读取完成
+	wg     sync.WaitGroup         // 等待组用于等待后台goroutine完成
+	mu     sync.Mutex             // 互斥锁，保护共享资源
+	closed bool                   // 标记是否已经关闭
+}
+
+func NewTheNewDirTEEFileReaderJustCall(isAES int, FileName string) (*TheNewDirTEEFileReaderJustCall, error) {
+
+	kjb := (*C.KeystoneJustReady)(C.malloc(C.sizeof_KeystoneJustReady))
+	if kjb == nil { // 检查内存分配是否成功
+		return nil, fmt.Errorf("failed to allocate memory for KeystoneJustReady")
+	}
+
+	rb := (*C.RingBuffer)(C.malloc(C.sizeof_RingBuffer))
+	if rb == nil { // 检查内存分配是否成功
+		return nil, fmt.Errorf("failed to allocate memory for RingBuffer")
+	}
+
+	// Convert Go int to C int
+	cIsAES := C.int(isAES)
+
+	C.init_keystone_just_ready(kjb)
+	C.init_ring_buffer(rb)
+
+	kjbreader := &TheNewDirTEEFileReaderJustCall{
+		kjb:     kjb,
+		rb:     rb,
+		readCh: make(chan struct{}, 1),
+		closed: false,
+	}
+
+	kjbreader.wg.Add(1)
+	go func() {
+		defer kjbreader.wg.Done() // 确保在goroutine结束时调用Done
+		C.the_new_dir_ipfs_keystone_de(cIsAES, unsafe.Pointer(C.CString(FileName)), unsafe.Pointer(kjb), unsafe.Pointer(rb))
+		fmt.Println("the new dir TEE read file done")
+	}()
+
+	C.the_new_dir_keystone_wait_ready(unsafe.Pointer(kjb))
+
+	return kjbreader, nil
+}
+
+func The_New_DIR_Ipfs_keystone_test_de(isAES int, FileName string) (TheNewDirTEEFileReaderJustCall){
+
+	// 打印FileName
+	fmt.Println("The New Dir Get file:", FileName)
+
+	kjbreader, _ := NewTheNewDirTEEFileReaderJustCall(isAES, FileName)
+
+	return *kjbreader
+}
+
+// set filesize
+func TheNewDirKeystoneDecryptSetLength(kjbreader *TheNewDirTEEFileReaderJustCall, shmsize uint64){
+	// fmt.Printf("shmsize: %d\n", shmsize)
+	C.thenewdirkeystonedecryptSetLength(unsafe.Pointer(kjbreader.kjb), C.ulonglong(shmsize))
+
+	// fmt.Printf("shmsize: %d\n", shmsize)
+	if shmsize == 0 {
+		return
+	}
+	// return
+}
+
+func TheNewDirWaitKeystoneFileReady(kjbreader *TheNewDirTEEFileReaderJustCall) (TheNewDirTEEFileReader) {
+	C.the_new_dir_wait_keystone_file_ready(unsafe.Pointer(kjbreader.kjb))
+
+	rbreader := &TheNewDirTEEFileReader {
+		kjb:    kjbreader.kjb,
+		rb:     kjbreader.rb,
+		readCh: make(chan struct{}, 1),
+		closed: false,
+	}
+
+	return *rbreader
+}
+
+
+// Write 实现io.Write接口的方法，从p切片读取数据到缓冲区
+func (r *TheNewDirTEEFileReader) Write(p []byte) (int, error) {
+	// fmt.Printf("test 3\n");
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.closed {
+		return 0, io.EOF
+	}
+
+	var wrsult C.int = 0;
+	wrsult = C.ring_buffer_write((*C.RingBuffer)(r.rb), (*C.char)(unsafe.Pointer(&p[0])), C.size_t(len(p)))
+	if wrsult == 0 { // 检查ring_buffer_write的结果
+		return int(wrsult), io.EOF
+	}
+	return int(wrsult), nil
+}
+
+
+// Close 关闭TheNewDirTEEFileReader实例，释放相关资源
+func (r *TheNewDirTEEFileReader) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.closed {
+		r.closed = true
+		C.ring_buffer_stop((*C.RingBuffer)(r.rb));
+		// C.free(unsafe.Pointer(r.rb))  // 由c语言程序释放内存
+		close(r.readCh)  // 确保通道被关闭
+		fmt.Println("wait TheNewDirTEEFileReader Close")
+		C.the_new_dir_wait_keystone_file_end((*C.KeystoneJustReady)(r.kjb))
+		// time.Sleep(1500 * time.Millisecond)  // 固定等待1.5s
+		// r.wg.Wait()  // 等待后台goroutine完成
+	}
+	fmt.Println("TheNewDirTEEFileReader Close")
 	return nil
 }
