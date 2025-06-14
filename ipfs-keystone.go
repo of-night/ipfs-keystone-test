@@ -710,6 +710,7 @@ func NewMultiProcessCrossTEEFileFlexibleReader(isAES int, FileName string, fileS
 			fmt.Fprintf(os.Stderr, "Failed to start %d child process: %v\n", numflexible, err)
 			os.Exit(1)
 		}
+		numflexible++
 
 	}
 
@@ -1570,3 +1571,207 @@ func (r *TheNewDirTEEFileReader) Close() error {
 	fmt.Println("TheNewDirTEEFileReader Close")
 	return nil
 }
+
+
+// ==================================================================================
+//				The New Dir Multi-process Cross-read Flexible Keystone Encrypt
+// ==================================================================================
+
+
+type TheNewDirMultiProcessCrossTEEFileFlexibleReaderJustCall struct {
+	shmaddr     []byte				  	// 共享内存的地址
+	shmsize     int64				  	// 共享内存的长度
+	fileCount	int64
+	flexible 	int
+	readCh chan struct{}          		// 通道用于通知读取完成
+	mu     sync.Mutex             		// 互斥锁，保护共享资源
+	closed bool                   		// 标记是否已经关闭
+}
+
+type TheNewDirMultiProcessCrossTEEFileFlexibleReader struct {
+	shmaddr     []byte				  	// 共享内存的地址
+	shmsize     int64				  	// 共享内存的长度
+	fileCount	int64
+	flexible 	int
+	shmaddr_justcall     []byte				  	// 共享内存的地址
+	shmsize_justcall     int64				  	// 共享内存的长度
+	readCh chan struct{}          		// 通道用于通知读取完成
+	mu     sync.Mutex             		// 互斥锁，保护共享资源
+	closed bool                   		// 标记是否已经关闭
+}
+
+// 创建一个新的共享内存段
+func theNewDirlongcreateShm(size int64) ([]byte, error) {
+
+	shmaddr := C.the_new_dir_long_create_shareMemory(C.longlong(size))
+
+	// 错误写法 (*[size]byte)中 size 必须为常量，只是类型转换，并没有分配空间
+	// return (*[size]byte)(shmaddr)[:], nil
+	// [low:high:max] 获取内存切片low-high 可以索引low-high  数组实际空间大小为max
+	// 若不指定 max 则是前面类型的空间，即1 << 32 = 1GB
+	return (*[1 << 32]byte)(shmaddr)[:size:size], nil
+}
+
+// NewTheNewDirMultiProcessCrossTEEFileFlexibleReaderJustCall TheNewDirMultiProcessCrossTEEFileFlexibleReaderJustCall
+func NewTheNewDirMultiProcessCrossTEEFileFlexibleReaderJustCall(isAES int, flexible int) (*TheNewDirMultiProcessCrossTEEFileFlexibleReaderJustCall, error) {
+	
+	// MAXNUM 10
+	C.fixFlexibleNum(unsafe.Pointer(&flexible))
+
+	// 创建共享内存片段
+	shmsize := int64(C.sizeof_TheNewDirMultiProcessCrossFlexibleSHMBufferJustCall + (flexible * C.sizeof_int) + (flexible * C.sizeof_longlong))
+	shm, err := theNewDirlongcreateShm(shmsize)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create shared memory: %v\n", err)
+		os.Exit(1)
+	}
+
+	reader := &TheNewDirMultiProcessCrossTEEFileFlexibleReaderJustCall{
+		shmaddr:    shm,
+		shmsize:	shmsize,
+		fileCount:	0,
+		flexible: flexible,
+		readCh: make(chan struct{}, 1),
+		closed: false,
+	}
+
+	// 启动keystone之前先初始化内存空间
+	C.theNewDirflexiblecrossInitSHMJustCall(unsafe.Pointer(&reader.shmaddr[0]), C.int(flexible))
+	// fmt.Println("MultiProcess Processing file test")
+
+	var numflexible int = 0
+	for numflexible < flexible {
+
+		// fmt.Printf("isAES:%d, shmsize:%d, numflexible:%d, flexible:%d\n", isAES, shmsize, numflexible, flexible)
+
+		// 启动第一个子进程，读取文件的前半部分
+		cmd := exec.Command("./the_new_dir_flexible_cross_child_process", 
+			fmt.Sprintf("%d", isAES), 
+			fmt.Sprintf("%d", shmsize), 
+			fmt.Sprintf("%d", numflexible), 
+			fmt.Sprintf("%d", flexible),
+		)
+
+		err = cmd.Start()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to start %d child process: %v\n", numflexible, err)
+			os.Exit(1)
+		}
+
+		numflexible++
+
+	}
+
+	C.theNewDirflexiblecrosswaitKeystoneReady(unsafe.Pointer(&reader.shmaddr[0]), C.int(flexible))
+
+	return reader, nil
+}
+
+func The_New_Dir_MultiProcess_Cross_Flexible_Ipfs_keystone_test_just_call(isAES int, flexible int) (TheNewDirMultiProcessCrossTEEFileFlexibleReaderJustCall){
+
+	// 打印FileName
+	fmt.Println("The New Dir MultiProcess flexible Processing file")
+
+	reader, _ := NewTheNewDirMultiProcessCrossTEEFileFlexibleReaderJustCall(isAES, flexible)
+
+	return *reader
+}
+
+
+// 创建一个新的共享内存段
+func theNewDirlongcreateShmofFile(size int64, fileCount int64) ([]byte, error) {
+
+	shmaddr := C.the_new_dir_long_create_shareMemory_of_file(C.longlong(size), C.longlong(fileCount))
+
+	// 错误写法 (*[size]byte)中 size 必须为常量，只是类型转换，并没有分配空间
+	// return (*[size]byte)(shmaddr)[:], nil
+	// [low:high:max] 获取内存切片low-high 可以索引low-high  数组实际空间大小为max
+	// 若不指定 max 则是前面类型的空间，即1 << 32 = 1GB
+	return (*[1 << 32]byte)(shmaddr)[:size:size], nil
+}
+
+func (thenewdirReader *TheNewDirMultiProcessCrossTEEFileFlexibleReaderJustCall) The_New_Dir_MultiProcess_cross_Flexible_Set_fileAbsPath(fpath string, fileSize int64)(*TheNewDirMultiProcessCrossTEEFileFlexibleReader){
+	// fmt.Printf("thenewdirReader fpath:%s, fileSize:%d, thenewdirReader.fileCount:%d\n", fpath, fileSize, thenewdirReader.fileCount)
+
+	if fileSize == 0 || fpath == ""{
+		C.theNewDirflexiblecrosswaitKeystoneTransferFilesReady(unsafe.Pointer(&thenewdirReader.shmaddr[0]), C.int(thenewdirReader.flexible), nil, 0, 0, nil)
+		return nil
+	}
+
+	cFileSize := C.long_alignedFileSize(C.longlong(fileSize))
+	cBlocksNums := C.long_alignedFileSize_blocksnums(cFileSize)
+
+	thenewdirReader.fileCount++
+
+	// 创建共享内存片段
+	shmsize := C.sizeof_TheNewDirMultiProcessCrossFlexibleSHMBufferReader + int64(cBlocksNums * C.sizeof_int) + int64(cFileSize)
+	shm, err := theNewDirlongcreateShmofFile(shmsize, thenewdirReader.fileCount)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create shared memory: %v\n", err)
+		os.Exit(1)
+	}
+
+	reader := &TheNewDirMultiProcessCrossTEEFileFlexibleReader{
+		shmaddr:    shm,
+		shmsize:	shmsize,
+		fileCount:	thenewdirReader.fileCount,
+		flexible: 	thenewdirReader.flexible,
+		shmaddr_justcall:    thenewdirReader.shmaddr,
+		shmsize_justcall:	thenewdirReader.shmsize,
+		readCh: 	make(chan struct{}, 1),
+		closed: 	false,
+	}
+
+	C.theNewDirflexiblecrosswaitKeystoneTransferFilesReady(unsafe.Pointer(&thenewdirReader.shmaddr[0]), C.int(thenewdirReader.flexible), unsafe.Pointer(&reader.shmaddr[0]), cBlocksNums, cFileSize, unsafe.Pointer(C.CString(fpath)))
+	// fmt.Println("MultiProcess Processing file test")
+
+	return reader
+	
+}
+
+
+func (r *TheNewDirMultiProcessCrossTEEFileFlexibleReader)Read(p []byte) (int, error)  {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.closed {
+		return 0, io.EOF
+	}
+
+	// fmt.Println("The New Dir MultiProcess Processing read start")
+	var readLen C.int = 0;
+	// 交给c语言函数处理
+	result := C.TheNewDirMultiProcessCrossReadFlexible(unsafe.Pointer(&r.shmaddr[0]), C.int(r.shmsize), unsafe.Pointer(&p[0]), C.int(len(p)), &readLen);
+	if result == 0 {
+		return int(readLen), io.EOF
+	}
+
+	// fmt.Println("The New Dir MultiProcess Processing read done")
+
+	return int(readLen), nil;
+}
+
+// 删除共享内存段
+func the_new_dir_flexbile_longremoveShm(shmsize int64, fileCount int64) error {
+	C.the_new_dir_flexbile_long_removeShm(C.longlong(shmsize), C.longlong(fileCount))
+
+	return nil
+}
+
+// Close 关闭 TheNewDirMultiProcessCrossTEEFileFlexibleReader 实例，释放相关资源
+func (r *TheNewDirMultiProcessCrossTEEFileFlexibleReader) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.closed {
+		r.closed = true
+		close(r.readCh)  // 确保通道被关闭
+		fmt.Println("The New Dir MultiProcess Cross Flexible wait TEEFileReader end")
+		C.theNewDirflexiblecrosswaitKeystoneTransferFilesEnd(unsafe.Pointer(&r.shmaddr_justcall[0]), C.int(r.flexible))
+		defer detachShm(r.shmaddr)
+		defer the_new_dir_flexbile_longremoveShm(r.shmsize, r.fileCount)
+	}
+	fmt.Println("The New Dir MultiProcess Cross Flexible TEEFileReader Close")
+	return nil
+}
+
