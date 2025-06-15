@@ -1775,3 +1775,131 @@ func (r *TheNewDirMultiProcessCrossTEEFileFlexibleReader) Close() error {
 	return nil
 }
 
+
+// ==================================================================================
+//				The New Dir Keystone Encrypt
+// ==================================================================================
+
+
+type TheNewDirTEEFileReaderJustCallADD struct {
+	rb     *C.RingBuffer          // 指向C语言中的RingBuffer结构
+	kjb    *C.KeystoneJustReadyAdd          
+	readCh chan struct{}          // 通道用于通知读取完成
+	wg     sync.WaitGroup         // 等待组用于等待后台goroutine完成
+	mu     sync.Mutex             // 互斥锁，保护共享资源
+	closed bool                   // 标记是否已经关闭
+}
+
+// TheNewDirTEEFileReader 结构体封装了环形缓冲区的相关操作
+type TheNewDirTEEFileReaderADD struct {
+	rb     *C.RingBuffer          // 指向C语言中的RingBuffer结构
+	kjb    *C.KeystoneJustReadyAdd
+	readCh chan struct{}          // 通道用于通知读取完成
+	wg     sync.WaitGroup         // 等待组用于等待后台goroutine完成
+	mu     sync.Mutex             // 互斥锁，保护共享资源
+	closed bool                   // 标记是否已经关闭
+}
+
+func NewTheNewDirTEEFileReaderJustCallADD(isAES int) (*TheNewDirTEEFileReaderJustCallADD, error) {
+
+	kjb := (*C.KeystoneJustReadyAdd)(C.malloc(C.sizeof_KeystoneJustReadyAdd))
+	if kjb == nil { // 检查内存分配是否成功
+		return nil, fmt.Errorf("failed to allocate memory for KeystoneJustReadyAdd")
+	}
+
+	rb := (*C.RingBuffer)(C.malloc(C.sizeof_RingBuffer))
+	if rb == nil { // 检查内存分配是否成功
+		return nil, fmt.Errorf("failed to allocate memory for RingBuffer")
+	}
+
+	// Convert Go int to C int
+	cIsAES := C.int(isAES)
+
+	C.init_keystone_just_ready_add(kjb)
+	C.init_ring_buffer(rb)
+
+	kjbreader := &TheNewDirTEEFileReaderJustCallADD{
+		kjb:     kjb,
+		rb:     rb,
+		readCh: make(chan struct{}, 1),
+		closed: false,
+	}
+
+	kjbreader.wg.Add(1)
+	go func() {
+		defer kjbreader.wg.Done() // 确保在goroutine结束时调用Done
+		C.the_new_dir_ipfs_keystone(cIsAES, unsafe.Pointer(kjb), unsafe.Pointer(rb))
+		fmt.Println("the new dir TEE read file done")
+	}()
+
+	C.the_new_dir_keystone_wait_ready_add(unsafe.Pointer(kjb))
+
+	return kjbreader, nil
+}
+
+func The_New_DIR_Ipfs_keystone_test(isAES int) (TheNewDirTEEFileReaderJustCallADD){
+
+	// 打印FileName
+	fmt.Println("The New Dir add file:")
+
+	kjbreader, _ := NewTheNewDirTEEFileReaderJustCallADD(isAES)
+
+	return *kjbreader
+}
+
+func (thenewdirReader *TheNewDirTEEFileReaderJustCallADD) The_New_Dir_Keystone_Set_fileAbsPath(fpath string, fileSize int64)(*TheNewDirTEEFileReaderADD){
+	// fmt.Printf("thenewdirReader fpath:%s, fileSize:%d\n", fpath, fileSize)
+
+	if fileSize == 0 || fpath == "" {
+		C.theNewDirKeystoneTransferFilesReady(unsafe.Pointer(thenewdirReader.kjb), 0, nil)
+		return nil
+	}
+
+	// C.init_ring_buffer(thenewdirReader.rb)
+
+	reader := &TheNewDirTEEFileReaderADD{
+		kjb:    thenewdirReader.kjb,
+		rb:     thenewdirReader.rb,
+		readCh: make(chan struct{}, 1),
+		closed: false,
+	}
+
+	C.theNewDirKeystoneTransferFilesReady(unsafe.Pointer(thenewdirReader.kjb), C.longlong(fileSize), unsafe.Pointer(C.CString(fpath)))
+
+	return reader
+	
+}
+
+// Read 实现io.Reader接口的方法，从缓冲区读取数据到p切片
+func (r *TheNewDirTEEFileReaderADD) Read(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.closed {
+		return 0, io.EOF
+	}
+
+	var readLen C.int = 0;
+	result := C.ring_buffer_read((*C.RingBuffer)(r.rb), (*C.char)(unsafe.Pointer(&p[0])), C.int(len(p)), &readLen)
+	if result == 0 { // 检查ring_buffer_read的结果
+		return int(readLen), io.EOF
+	}
+	return int(readLen), nil
+}
+
+
+// Close 关闭TheNewDirTEEFileReaderADD实例，释放相关资源
+func (r *TheNewDirTEEFileReaderADD) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.closed {
+		r.closed = true
+		// C.free(unsafe.Pointer(r.rb))  // 释放C语言分配的内存
+		C.the_new_dir_wait_keystone_file_end_add((*C.KeystoneJustReadyAdd)(r.kjb), (*C.RingBuffer)(r.rb))
+		close(r.readCh)  // 确保通道被关闭
+		// r.wg.Wait()  // 等待后台goroutine完成
+	}
+	fmt.Println("TEEFileReader Close")
+	return nil
+}
